@@ -87,31 +87,33 @@ HX711 scale;
 #define CEXT_OPTN 7
 
 
-float JUMBO_MIN = 81.0;
+
+
+float JUMBO_MIN = 79.0;
 
 //2X 80.0-74.0
-float XXL_MAX = 79.0;
-float XXL_MIN = 74.0;
+float XXL_MAX = 77.0;
+float XXL_MIN = 72.0;
 
 //XL 69.0-64.6
-float XL_MAX = 69.0;
-float XL_MIN = 64.6;
+float XL_MAX = 67.0;
+float XL_MIN = 62.6;
 
 //L 64.5-58.0
-float L_MAX = 64.5;
-float L_MIN = 58.0;
+float L_MAX = 62.5;
+float L_MIN = 56.0;
 
 //M 57.8-54.5
-float M_MAX = 57.8;
-float M_MIN = 54.5;
+float M_MAX = 55.8;
+float M_MIN = 52.5;
 
 //S 54.0-49.0
-float S_MAX = 54.0;
-float S_MIN = 49.0;
+float S_MAX = 52.0;
+float S_MIN = 47.0;
 
 //XS 48.0-10.0
-float XS_MAX = 48.0;
-float XS_MIN = 10.0;
+float XS_MAX = 46.0;
+float XS_MIN = 8.0;
 
 
 int c_state , n_state;
@@ -131,16 +133,14 @@ int optn;
 void setup() {
   Serial.begin(38400);
 
-  //send info to terminal if available
-  Serial.println("HX711 Calibration");
-
-  //Initialize constants and btns
+  //Initialize btns pins and flags
   init_constants_btns();
   //Initialize egg scale
   setup_eggscale();
   //setup main screen
   setup_main_screen();
 
+  //initialize_eeprom();
   read_weights_from_eeprom();
 }
 
@@ -153,7 +153,8 @@ void loop() {
 }
 
 
-//--------------------Function for statemachine----------------------------
+//--------------------Function for state machine----------------------------
+//-> finite state machine that contains behavior of the program
 void fsm(){
 
   
@@ -416,7 +417,7 @@ void read_weights_from_eeprom(){
 
 
 //-------------------Function to initialize eeprom with constants-----------------
-//--> use function to initialize eeprom with hard coded  constants
+//--> use function to initialize eeprom with hard coded tresholds whenever thresholds are changes
 void initialize_eeprom(){
 
   
@@ -690,7 +691,7 @@ void config_screen(){
 //-> use this to display weight min and max based on config option 
 void setup_config_change(int c_optn){
 
-  int optn_min = 0 , optn_max = 0;    //variables for printing information
+  float optn_min = 0 , optn_max = 0;    //variables for printing information
   String buff = " ";                  //wow a string primitive wow
 
   switch(c_optn){
@@ -734,15 +735,15 @@ void setup_config_change(int c_optn){
   lcd.setCursor(0,0);
   lcd.print(buff);
   lcd.print("_MIN  ");
-  lcd.print(optn_min);
+  lcd.print(optn_min,1);
   lcd.setCursor(0,1);
   lcd.print(buff);
   lcd.print("_MAX  ");
-  lcd.print(optn_max);
+  lcd.print(optn_max,1);
 
   //blink cursor on proper side
-  if(c_state == CONFIG_CHANGE_MIN)  lcd.setCursor(11,0);
-  else if(c_state == CONFIG_CHANGE_MAX) lcd.setCursor(11,1);
+  if(c_state == CONFIG_CHANGE_MIN)  lcd.setCursor(12,0);
+  else if(c_state == CONFIG_CHANGE_MAX) lcd.setCursor(12,1);
 }
 
 //-------------------Function to save modified weights into eeprom--------
@@ -750,9 +751,7 @@ void setup_config_change(int c_optn){
 void setup_save_screen(){
   lcd.clear();
   lcd.print("Saving settings...");
-  delay(2000);
   write_weights_to_eeprom();
-  lcd.print("done saving!");
   delay(2000);
   
 }
@@ -761,16 +760,16 @@ void setup_save_screen(){
 // this function is for changing minimum part of the constant
 void config_change_min(){
 
-  int optn_increment = 0;
+  float optn_increment = 0;
   
   check_btns();
 
   //set increments/decrement based on flags
   if(left_press){
-    optn_increment = 1;
+    optn_increment = -0.1f;
     left_press = false;
   }else if(right_press){
-    optn_increment = -1;
+    optn_increment = 0.1f;
     right_press = false;
   }
 
@@ -822,16 +821,16 @@ void config_change_min(){
 //
 void config_change_max(){
 
-  int optn_increment = 0;
+  float optn_increment = 0.0f;
   
   check_btns();
 
   //set increments/decrement based on flags
   if(left_press){
-    optn_increment = 1;
+    optn_increment = -0.1f;
     left_press = false;
   }else if(right_press){
-    optn_increment = -1;
+    optn_increment = 0.1f;
     right_press = false;
   }
 
@@ -890,7 +889,14 @@ void main_screen(){
       Serial.println(units); // print out ave measurements
     
     lcd.setCursor(8,0);
-    lcd.print(units);
+
+    //set measurement threshold at >= 1g
+    if(units >= 1) lcd.print(units,2);
+    else{
+      lcd.print(0);
+      lcd.print("     ");
+    }
+    
     lcd.setCursor(6,1);
     
     if(units <= XS_MAX && units >= XS_MIN){
