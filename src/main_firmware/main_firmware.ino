@@ -2,132 +2,11 @@
 #include <HX711.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-
-/* -------------Pin assignments------------
- * ----HX711----
- * A0 - Dt pin
- * A1 - SCK pin
- * 
- * ---I2C LCD---
- * A4 - SDA
- * A5 - SCL
- * 
- */
-
-
-LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
-
-HX711 scale;
-
-
-/*
-//weight tresholds
-//Jumbo 81.0 onwards
-#define JUMBO_MIN 81.0
-
-//2X 80.0-74.0
-#define XXL_MAX 79.0
-#define XXL_MIN 74.0
-
-//XL 69.0-64.6
-#define XL_MAX 69.0
-#define XL_MIN 64.6
-
-//L 64.5-58.0
-#define L_MAX 64.5
-#define L_MIN 58.0
-
-//M 57.8-54.5
-#define M_MAX 57.8
-#define M_MIN 54.5
-
-//S 54.0-49.0
-#define S_MAX 54.0
-#define S_MIN 49.0
-
-//XS 48.0-10.0
-#define XS_MAX 48.0
-#define XS_MIN 10.0
-
-*/
-
-
-//Finite state machine states
-#define MAIN_STATE 0
-#define MENU_STATE 1
-#define CONFIG_STATE 2
-#define CONFIG_CHANGE_MIN 3
-#define CONFIG_CHANGE_MAX 4
-
-
-//Btn pins
-#define MENU_BTN_PIN 2
-#define LEFT_BTN_PIN 3
-#define RIGHT_BTN_PIN 4
-
-//Btn debounce time (in ms)
-#define DEBOUNCE_DELAY 50
-
-//State transition delay (in ms)
-#define TRANSITION_DELAY 500
-//Menu options
-#define TARE_OPTN 0
-#define CONFIG_OPTN 1
-#define EXT_OPTN 2
-
-
-//Config options
-#define XS_OPTN 0
-#define S_OPTN 1
-#define M_OPTN 2
-#define L_OPTN 3
-#define XL_OPTN 4
-#define XXL_OPTN 5
-#define JB_OPTN 6
-#define CEXT_OPTN 7
+#include "constants.h"
+#include "UI_setup.h"
 
 
 
-
-float JUMBO_MIN = 79.0;
-
-//2X 80.0-74.0
-float XXL_MAX = 77.0;
-float XXL_MIN = 72.0;
-
-//XL 69.0-64.6
-float XL_MAX = 67.0;
-float XL_MIN = 62.6;
-
-//L 64.5-58.0
-float L_MAX = 62.5;
-float L_MIN = 56.0;
-
-//M 57.8-54.5
-float M_MAX = 55.8;
-float M_MIN = 52.5;
-
-//S 54.0-49.0
-float S_MAX = 52.0;
-float S_MIN = 47.0;
-
-//XS 48.0-10.0
-float XS_MAX = 46.0;
-float XS_MIN = 8.0;
-
-
-int c_state , n_state;
-
-//flag
-boolean menu_press, left_press, right_press;
-
-//for debouncing
-int left_btn_state, last_left_btn_state;
-int right_btn_state, last_right_btn_state;
-int menu_btn_state, last_menu_btn_state;
-
-//for menu/config options
-int optn;
 
 
 void setup() {
@@ -140,8 +19,6 @@ void setup() {
   //setup main screen
   setup_main_screen();
 
-  //initialize_eeprom();
-  read_weights_from_eeprom();
 }
 
 
@@ -195,6 +72,10 @@ void fsm(){
             setup_config_screen();         //setup config items
             n_state = CONFIG_STATE;   //go to config screen
             break; 
+          case CALLIBRATE_OPTN:
+            setup_callibrate_screen();    //setup callibration items
+            n_state = CALLIBRATE_STATE;   //go to callibrate screen
+            break;  
         }
 
         //reset flag
@@ -295,6 +176,7 @@ void fsm(){
 
       //state transition
       if(menu_press){
+        
         setup_save_screen();            //save changes to eeprom
         setup_config_screen();            //setup menu screen
         n_state = CONFIG_STATE;         //proceed back to config screen
@@ -304,7 +186,22 @@ void fsm(){
       }
       delay(50);
       break;
-    
+      
+   case CALLIBRATE_STATE:
+
+      setup_callibrate_screen();
+      callibration_screen();
+      check_btns();
+      if(menu_press){
+        setup_save_screen();                      //save changes to eeprom
+        setup_menu_screen();                      //re-setup menu screen
+        optn = EXT_OPTN;                // assume exit back to main screen
+        n_state = MENU_STATE;                     //proceed to the menu
+        menu_press = false;
+      }else
+        n_state = CALLIBRATE_STATE;             //loop back till menu press
+
+      break;
   }
 
   //actual transition
@@ -312,252 +209,11 @@ void fsm(){
 }
 
 
-//-------------------Function to write constants------------------
-//--> use function to write constants into eeprom
-void write_weights_to_eeprom(){
-  
-  for(int i = 0 ,addr = 0; i < 13; i++ , addr += sizeof(float)){
-    
-    switch(i){
-      case 0:
-        EEPROM.put(addr,XS_MIN);
-        break;
-      case 1:
-        EEPROM.put(addr,XS_MAX);
-        break;
-      case 2:
-        EEPROM.put(addr,S_MIN);
-        break;
-      case 3:
-        EEPROM.put(addr,S_MAX);
-        break;
-      case 4:
-        EEPROM.put(addr,M_MIN);
-        break;
-      case 5:
-        EEPROM.put(addr,M_MAX);
-        break;
-      case 6:
-        EEPROM.put(addr,L_MIN);
-        break;
-      case 7:
-        EEPROM.put(addr,L_MAX);
-        break;
-      case 8:
-        EEPROM.put(addr,XL_MIN);
-        break;
-      case 9:
-        EEPROM.put(addr,XL_MAX);
-        break;
-      case 10:
-        EEPROM.put(addr,XXL_MIN);
-        break;
-      case 11:
-        EEPROM.put(addr,XXL_MAX);
-        break;
-      case 12:
-        EEPROM.put(addr,JUMBO_MIN);
-        break;
-    }
-  }
-}
-
-//-------------------Function to read constants in eeprom--------
-//-->use function to read all weights from eeprom
-void read_weights_from_eeprom(){
-
-  //iterate through first 13 (float sized) addresses
-  for(int i = 0 ,addr = 0; i < 13; i++ , addr += sizeof(float)){
-    
-    switch(i){
-      case 0:
-        EEPROM.get(addr,XS_MIN);
-        break;
-      case 1:
-        EEPROM.get(addr,XS_MAX);
-        break;
-      case 2:
-        EEPROM.get(addr,S_MIN);
-        break;
-      case 3:
-        EEPROM.get(addr,S_MAX);
-        break;
-      case 4:
-        EEPROM.get(addr,M_MIN);
-        break;
-      case 5:
-        EEPROM.get(addr,M_MAX);
-        break;
-      case 6:
-        EEPROM.get(addr,L_MIN);
-        break;
-      case 7:
-        EEPROM.get(addr,L_MAX);
-        break;
-      case 8:
-        EEPROM.get(addr,XL_MIN);
-        break;
-      case 9:
-        EEPROM.get(addr,XL_MAX);
-        break;
-      case 10:
-        EEPROM.get(addr,XXL_MIN);
-        break;
-      case 11:
-        EEPROM.get(addr,XXL_MAX);
-        break;
-      case 12:
-        EEPROM.get(addr,JUMBO_MIN);
-        break;
-    }
-  }
-}
 
 
 
 
-//-------------------Function to initialize eeprom with constants-----------------
-//--> use function to initialize eeprom with hard coded tresholds whenever thresholds are changes
-void initialize_eeprom(){
-
-  
-  for(int i = 0 ,addr = 0; i < 13; i++ , addr += sizeof(float)){
-    
-    switch(i){
-      case 0:
-        EEPROM.put(addr,XS_MIN);
-        break;
-      case 1:
-        EEPROM.put(addr,XS_MAX);
-        break;
-      case 2:
-        EEPROM.put(addr,S_MIN);
-        break;
-      case 3:
-        EEPROM.put(addr,S_MAX);
-        break;
-      case 4:
-        EEPROM.put(addr,M_MIN);
-        break;
-      case 5:
-        EEPROM.put(addr,M_MAX);
-        break;
-      case 6:
-        EEPROM.put(addr,L_MIN);
-        break;
-      case 7:
-        EEPROM.put(addr,L_MAX);
-        break;
-      case 8:
-        EEPROM.put(addr,XL_MIN);
-        break;
-      case 9:
-        EEPROM.put(addr,XL_MAX);
-        break;
-      case 10:
-        EEPROM.put(addr,XXL_MIN);
-        break;
-      case 11:
-        EEPROM.put(addr,XXL_MAX);
-        break;
-      case 12:
-        EEPROM.put(addr,JUMBO_MIN);
-        break;
-    }
-  }
-  
-}
-
-
-//-------------------Function to setup scale------------------
-//-> use function setup open egg scale
-void setup_eggscale(){
-   //Initialize lcd display
-  lcd.init();
-  lcd.init();
-  lcd.backlight();
-  lcd.setCursor(1,0);
-  lcd.print("Calibration..");
-  
-  scale.begin(A0 , A1);
-  
-
-  //Get and set base offset
-  lcd.clear();
-  lcd.setCursor(1,0);
-  lcd.print("Setting offset..");
-  
-  //scale.tare();
-  //scale.set_offset(scale.read_average());
-
-  //set hardcoded calibration multiplier
-  scale.set_scale(642.3076923);
-  scale.tare();
-
-  //Finished callibration
-  lcd.clear();
-  lcd.setCursor(1,0);
-  lcd.print("Scale Ready!");
-}
-
-//-------------------Function to transition from MENU to MAIN---------------
-//-> use function in fsm for transition states
-void setup_main_screen(){
-  //temporary state only
-  lcd.clear();     //clear lcd
-  //print data to lcd
-  lcd.setCursor(0,0);
-  lcd.print("Weight: ");
-  lcd.setCursor(0,1);
-  lcd.print("Size: ");
-  lcd.noBlink();
-
-      
-  //delay to avoid sampling another btn press too quickly
-  delay(TRANSITION_DELAY);
-}
-
-//-------------------Function to transition from MAIN to MENU---------------
-//-> use function in fsm for transition states
-void setup_menu_screen(){
-  //temporary state only
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("Tare");
-  lcd.setCursor(0,1);
-  lcd.print("Config");
-  lcd.setCursor(9,0);
-  lcd.print("Exit");
-
-  //delay to avoid sampling another btn press too quickly
-  delay(TRANSITION_DELAY);
-}
-
-//----------------Function to transition to config from menu screen--------
-//-> To do: write existing test into screen for scrolling
-void setup_config_screen(){
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("XS");
-  lcd.setCursor(3,0);
-  lcd.print(" S");
-  lcd.setCursor(6,0);
-  lcd.print(" M");
-  lcd.setCursor(9,0);
-  lcd.print(" L");
-  lcd.setCursor(13,0);
-  lcd.print("XL");
-  lcd.setCursor(0,1);
-  lcd.print("2X");
-  lcd.setCursor(4,1);
-  lcd.print("JB");
-  lcd.setCursor(11,1);
-  lcd.print("EXIT");
-
-  //initialize option to xs
-  optn = XS_OPTN;
-  
-}
+//-------------------------------------------MENU/CONFIG/CALLIBRATION FUNCTIONS-------------------------------
 
 //-------------------Function to display tare screen-----------------------
 //-> use function to scale.tare() with some delays
@@ -613,8 +269,12 @@ void menu_screen(){
       lcd.setCursor(7,1);
       lcd.blink();
       break;
+    case CALLIBRATE_OPTN:
+      lcd.setCursor(15,0);
+      lcd.blink();
+      break;
     case EXT_OPTN:
-      lcd.setCursor(14,0);
+      lcd.setCursor(15,1);
       lcd.blink();
       break;     
   }
@@ -686,75 +346,6 @@ void config_screen(){
 }
 
 
-
-//-------------------Function to print out settings save on eeprom--------
-//-> use this to display weight min and max based on config option 
-void setup_config_change(int c_optn){
-
-  float optn_min = 0 , optn_max = 0;    //variables for printing information
-  String buff = " ";                  //wow a string primitive wow
-
-  switch(c_optn){
-    case XS_OPTN:
-      buff = "XS";
-      optn_min = XS_MIN;
-      optn_max = XS_MAX;
-      break;
-    case S_OPTN:
-      buff = "S";
-      optn_min = S_MIN;
-      optn_max = S_MAX;
-      break;
-    case M_OPTN:
-      buff = "M";
-      optn_min = M_MIN;
-      optn_max = M_MAX;
-      break;
-    case L_OPTN:
-      buff = "L";
-      optn_min = L_MIN;
-      optn_max = L_MAX;
-      break;
-    case XL_OPTN:
-      buff = "XL";
-      optn_min = XL_MIN;
-      optn_max = XL_MAX;
-      break;
-    case XXL_OPTN:
-      buff = "2X";
-      optn_min = XXL_MIN;
-      optn_max = XXL_MAX;
-      break;
-    case JB_OPTN:
-      buff = "JUMBO";
-      optn_min = JUMBO_MIN;
-      break;  
-  }
-
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print(buff);
-  lcd.print("_MIN  ");
-  lcd.print(optn_min,1);
-  lcd.setCursor(0,1);
-  lcd.print(buff);
-  lcd.print("_MAX  ");
-  lcd.print(optn_max,1);
-
-  //blink cursor on proper side
-  if(c_state == CONFIG_CHANGE_MIN)  lcd.setCursor(12,0);
-  else if(c_state == CONFIG_CHANGE_MAX) lcd.setCursor(12,1);
-}
-
-//-------------------Function to save modified weights into eeprom--------
-//-> use this after chaning max threshold in any weight category
-void setup_save_screen(){
-  lcd.clear();
-  lcd.print("Saving settings...");
-  write_weights_to_eeprom();
-  delay(2000);
-  
-}
 //---------------Function to modify weight constants' minimum--------------
 //-> use function to update constants during config change screen
 // this function is for changing minimum part of the constant
@@ -873,8 +464,30 @@ void config_change_max(){
     }
 }
 
+//----------------Function to modify callibration factor-------------------
+//-> use function to update pre-set callibration factor
+void callibration_screen(){
 
+  float factor_increment = 0.0f;
+  //check buttons first
+  check_btns();
 
+  //set if increase or decrease
+  if(left_press) {
+    factor_increment = -1.0f;
+    //clear button flag
+    left_press = false;
+  }else if(right_press){
+    factor_increment = 1.0f;
+    //clear button flag
+    right_press = false;
+  }
+
+  //update callibration factor
+  callibration_factor += factor_increment;
+
+  scale.set_scale(callibration_factor);
+}
 
 //--------------------Function to display main screen----------------------
 //-> use function to display normal segregator function

@@ -28,7 +28,6 @@ float XS_MIN = 10.0f;
 
 void setup() {
   Serial.begin(9600);
-  initialize_eeprom();
   test_eeprom();
 }
 
@@ -41,7 +40,7 @@ void loop() {
 void test_eeprom(){
   
   float f = 0.00f;
-  for(int i = 0 ,addr = 0 ;i<13; i++ , addr += sizeof(float)){
+  for(int i = 0 ,addr = 0 ;i<14; i++ , addr += sizeof(float)){
     EEPROM.get(addr,f);
     Serial.println(f);
   }
